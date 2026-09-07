@@ -278,6 +278,142 @@ frappe.provide("frappe.swift");
 		});
 	}
 
+	/* ---- Export ----
+
+	   HR exports the chart with html2canvas, which only understands legacy
+	   colour syntax. Swift paints in `color-mix(in oklab, …)`, and Chrome
+	   computes that to `oklab(…)` — so the first node html2canvas parsed threw
+	   "Attempting to parse an unsupported color function" and the promise
+	   rejected. With any Swift scheme on, Export silently produced no file at
+	   all: no error surfaced, the spinner just went away.
+
+	   Before the capture, every colour in the chart that computes to a modern
+	   function is pinned to the identical colour written as `rgba()`. The
+	   conversion is the browser's own — painting the value on a 1×1 canvas and
+	   reading the pixel back is exact, and keeps colour-space maths out of here.
+
+	   The pins come off when the capture finishes, not when HR thinks it has.
+	   `export_chart` restores its page styles on the line *after* calling
+	   html2canvas, while the clone is still being built, so anything undone at
+	   that point is undone far too early. `#freeze` is the honest signal: it is
+	   removed in html2canvas's own `.finally`. */
+
+	const COLOUR_PROPS = [
+		"color",
+		"backgroundColor",
+		"backgroundImage",
+		"borderTopColor",
+		"borderRightColor",
+		"borderBottomColor",
+		"borderLeftColor",
+		"outlineColor",
+		"boxShadow",
+		"fill",
+		"stroke",
+		"textDecorationColor",
+		"caretColor",
+		"columnRuleColor",
+	];
+
+	/* Computed values have had every var() resolved and contain no nested
+	   parens, so a non-greedy match per function is enough. */
+	const MODERN_COLOUR = /\b(?:oklab|oklch|lab|lch|color)\([^)]*\)/g;
+	const SENTINEL = "#010203";
+
+	let paint = null;
+	let pins = [];
+
+	function to_rgba(value) {
+		if (!paint) {
+			const canvas = document.createElement("canvas");
+			canvas.width = canvas.height = 1;
+			paint = canvas.getContext("2d", { willReadFrequently: true });
+		}
+
+		/* An unparseable colour leaves fillStyle untouched, so a sentinel tells
+		   us whether the browser actually understood it. */
+		paint.fillStyle = SENTINEL;
+		paint.fillStyle = value;
+		if (paint.fillStyle === SENTINEL) return null;
+
+		paint.clearRect(0, 0, 1, 1);
+		paint.fillRect(0, 0, 1, 1);
+		const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
+		return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+	}
+
+	function to_legacy(value) {
+		return value.replace(MODERN_COLOUR, (match) => to_rgba(match) || match);
+	}
+
+	function pin_colours() {
+		release_colours();
+
+		const root = document.getElementById("hierarchy-chart-wrapper");
+		if (!root) return;
+
+		[root, ...root.querySelectorAll("*")].forEach((el) => {
+			const computed = getComputedStyle(el);
+			COLOUR_PROPS.forEach((prop) => {
+				const value = computed[prop];
+				if (!value) return;
+				MODERN_COLOUR.lastIndex = 0;
+				if (!MODERN_COLOUR.test(value)) return;
+
+				const legacy = to_legacy(value);
+				if (legacy === value) return;
+
+				pins.push([el, prop, el.style[prop]]);
+				el.style[prop] = legacy;
+			});
+		});
+	}
+
+	function release_colours() {
+		pins.forEach(([el, prop, previous]) => {
+			el.style[prop] = previous || "";
+		});
+		pins = [];
+	}
+
+	function release_when_capture_ends() {
+		const started = Date.now();
+		let froze = false;
+
+		const poll = setInterval(() => {
+			const frozen = !!document.getElementById("freeze");
+			if (frozen) froze = true;
+
+			/* A big chart can take a while to clone; the ceiling is only there so
+			   a failed export cannot leave the pins on for the rest of the
+			   session. */
+			if ((froze && !frozen) || Date.now() - started > 180000) {
+				clearInterval(poll);
+				release_colours();
+			}
+		}, 200);
+	}
+
+	function arm_export() {
+		const label = typeof __ === "function" ? __("Export") : "Export";
+		const button = [...document.querySelectorAll("button[data-label]")].find(
+			(b) => b.dataset.label === label
+		);
+		if (!button || button.swiftExportArmed) return;
+
+		button.swiftExportArmed = true;
+		button.addEventListener(
+			"click",
+			() => {
+				pin_colours();
+				release_when_capture_ends();
+			},
+			/* capture: the colours have to be legacy before HR's own handler
+			   hands the tree to html2canvas. */
+			true
+		);
+	}
+
 	/* A ticker, not a MutationObserver.
 
 	   The observer was watching `.hierarchy`, and "Expand All" replaces that
@@ -308,6 +444,7 @@ frappe.provide("frappe.swift");
 			return;
 		}
 		patch_chart();
+		arm_export();
 		if (ticker) return;
 		dress(document);
 		sized = () => redraw_connectors();
@@ -319,6 +456,7 @@ frappe.provide("frappe.swift");
 				return;
 			}
 			patch_chart();
+			arm_export();
 			fetch_extra([...document.querySelectorAll(".node-card")].map((c) => c.id).filter(Boolean));
 			dress(document);
 			redraw_connectors();
