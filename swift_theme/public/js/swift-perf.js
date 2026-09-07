@@ -13,13 +13,20 @@
         if ("requestIdleCallback" in window) requestIdleCallback(fn, { timeout: 1500 });
         else setTimeout(fn, 200);
     }
+    /* The faces are served from Google's CDN (see swift-fonts.css), so the
+       win here is opening that connection early, not preloading a file.
+
+       This used to preload /assets/swift_theme/fonts/inter-var.woff2, which
+       this app has never shipped - public/fonts/README.txt says so in as many
+       words. Performance mode is on by default, so every page load fetched
+       that path and got a 404. */
     function preloadFonts() {
         try {
-            var urls = ["/assets/swift_theme/fonts/inter-var.woff2"];
-            urls.forEach(function (href) {
+            var hosts = ["https://fonts.gstatic.com"];
+            hosts.forEach(function (href) {
+                if (document.querySelector('link[rel="preconnect"][href="' + href + '"]')) return;
                 var l = document.createElement("link");
-                l.rel = "preload"; l.as = "font"; l.type = "font/woff2";
-                l.crossOrigin = "anonymous"; l.href = href;
+                l.rel = "preconnect"; l.href = href; l.crossOrigin = "anonymous";
                 document.head.appendChild(l);
             });
         } catch (e) {}

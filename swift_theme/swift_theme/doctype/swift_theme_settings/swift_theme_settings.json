@@ -31,7 +31,6 @@
   "home_preset",
   "home_greeting",
   "home_shortcuts",
-  "home_cards_break",
   "home_cards",
   "calendar_section",
   "calendar_fields",
@@ -276,10 +275,6 @@
    "fieldname": "home_shortcuts",
    "fieldtype": "Check",
    "label": "Show Shortcuts"
-  },
-  {
-   "fieldname": "home_cards_break",
-   "fieldtype": "Column Break"
   },
   {
    "depends_on": "eval:doc.enable_home_page==1",

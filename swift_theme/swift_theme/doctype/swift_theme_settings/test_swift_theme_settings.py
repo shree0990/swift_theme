@@ -190,6 +190,26 @@ def settings_patched(**values):
 
 
 @contextmanager
+def patch_single(doctype, **values):
+    """Field values on a Single for a test, then put them back.
+
+    Written straight to the row rather than through a save: these doctypes
+    validate a great deal that has nothing to do with branding, and one
+    unrelated bad value already on the doc would fail a test about logos.
+    """
+    previous = {k: frappe.db.get_single_value(doctype, k) for k in values}
+    try:
+        for key, value in values.items():
+            frappe.db.set_single_value(doctype, key, value)
+        frappe.clear_cache()
+        yield
+    finally:
+        for key, value in previous.items():
+            frappe.db.set_single_value(doctype, key, value)
+        frappe.clear_cache()
+
+
+@contextmanager
 def site_logo(value):
     """Give the site an App Logo of its own for a test, then put it back."""
     previous = frappe.db.get_single_value("Website Settings", "app_logo")
@@ -412,19 +432,35 @@ class TestSwiftThemeAccessControl(IntegrationTestCase):
 
 
 class TestSwiftThemeSwitchPermission(IntegrationTestCase):
-    """Only Administrator / System Manager may change the theme."""
+    """Anyone signed in may change their own theme; Guests may not.
+
+    This was System Manager only, which meant ticking Enable Theme Switcher
+    appeared to do nothing for every ordinary user - they were offered Frappe's
+    Light/Dark and none of the presets (Ali, 2026-08-30). Everything the
+    switcher writes goes through set_user_pref onto the caller's own User row,
+    so it is a personal preference, not an act on the site.
+    """
 
     def test_administrator_may_switch(self):
         self.assertTrue(can_switch_theme())
         self.assertTrue(get_effective_prefs()["can_switch_theme"])
 
-    def test_plain_user_may_not_switch(self):
+    def test_any_signed_in_user_may_switch(self):
         user = make_user([])
         original = frappe.session.user
         frappe.set_user(user)
         try:
+            self.assertTrue(can_switch_theme(), "a signed-in user cannot pick their own theme")
+            self.assertTrue(get_effective_prefs()["can_switch_theme"])
+        finally:
+            frappe.set_user(original)
+
+    def test_a_guest_may_not_switch(self):
+        """The boundary is being signed in, so that is what has to hold."""
+        original = frappe.session.user
+        frappe.set_user("Guest")
+        try:
             self.assertFalse(can_switch_theme())
-            self.assertFalse(get_effective_prefs()["can_switch_theme"])
         finally:
             frappe.set_user(original)
 
@@ -437,26 +473,48 @@ class TestSwiftThemeSwitchPermission(IntegrationTestCase):
         finally:
             frappe.set_user(original)
 
-    def test_endpoint_refuses_a_plain_user(self):
-        """Hiding the UI is not a control — the endpoint is reachable directly."""
-        user = make_user([])
+    def test_both_endpoints_refuse_a_guest(self):
+        """Hiding the UI is not a control - the endpoints are reachable directly.
+
+        Both write the same fields, so both have to refuse identically; one of
+        them used to guard swift_preset and the other did not, which made the
+        check optional for anyone calling the API.
+        """
+        from swift_theme.swift_theme.doctype.swift_theme_settings.swift_theme_settings import (
+            apply_theme,
+        )
+
         original = frappe.session.user
-        frappe.set_user(user)
+        frappe.set_user("Guest")
         try:
             with self.assertRaises(frappe.PermissionError):
                 set_user_pref("swift_preset", "Hulk")
             with self.assertRaises(frappe.PermissionError):
                 set_user_pref("swift_primary", "#123456")
+            with self.assertRaises(frappe.PermissionError):
+                apply_theme("Hulk")
         finally:
             frappe.set_user(original)
 
-    def test_apply_theme_endpoint_refuses_a_plain_user_too(self):
-        """The other endpoint that writes swift_preset must gate it identically.
+    def test_an_unlisted_field_is_still_refused(self):
+        """The allow-list is the real guard on what a user may write."""
+        user = make_user([])
+        original = frappe.session.user
+        frappe.set_user(user)
+        try:
+            with self.assertRaises(Exception):
+                set_user_pref("role_profile_name", "System Manager")
+            self.assertNotEqual(
+                frappe.db.get_value("User", user, "role_profile_name"), "System Manager")
+        finally:
+            frappe.set_user(original)
 
-        set_user_pref guarded the field and apply_theme did not, so the same
-        change refused through one whitelisted method went straight through the
-        other — the permission check was effectively optional for anyone
-        calling the API rather than using the switcher.
+    def test_apply_theme_writes_the_preset_for_a_plain_user(self):
+        """The endpoint a signed-in user reaches has to actually work.
+
+        It is the same field set_user_pref writes, so if one lets an ordinary
+        user through and the other does not, the switcher works or fails
+        depending on which path the UI happened to take.
         """
         from swift_theme.swift_theme.doctype.swift_theme_settings.swift_theme_settings import (
             apply_theme,
@@ -466,14 +524,8 @@ class TestSwiftThemeSwitchPermission(IntegrationTestCase):
         original = frappe.session.user
         frappe.set_user(user)
         try:
-            with self.assertRaises(frappe.PermissionError):
-                apply_theme("Hulk")
-            # A fresh user's swift_preset is "" (the Custom Field's default),
-            # not None — so assert the write did not land rather than that the
-            # field is empty in some particular way.
-            self.assertNotEqual(
-                frappe.db.get_value("User", user, "swift_preset"), "Hulk",
-                "the preset was written despite the refusal")
+            apply_theme("Hulk")
+            self.assertEqual(frappe.db.get_value("User", user, "swift_preset"), "Hulk")
         finally:
             frappe.set_user(original)
 
@@ -1169,7 +1221,6 @@ class TestSwiftThemeBackdrops(IntegrationTestCase):
             frappe.get_app_path(APP), "public", "icons", os.path.basename(FALLBACK_LOGO))
         self.assertTrue(os.path.exists(on_disk), f"the fallback {FALLBACK_LOGO} does not ship")
 
-        _shipped_logo_exists.cache_clear()
         with no_site_logo(), settings_patched(brand_logo=""):
             self.assertEqual(
                 _brand_mark(),
@@ -1237,6 +1288,33 @@ class TestSwiftThemeBackdrops(IntegrationTestCase):
         self.assertEqual(boot.app_logo_url, "/assets/frappe/images/frappe-framework-logo.svg")
         self.assertEqual(boot.desktop_icons[0]["logo_url"],
                          "/assets/erpnext/images/erpnext-logo.svg")
+
+    def test_the_tab_icon_follows_the_same_rule_as_the_logo(self):
+        """The favicon is the brand mark too, and yields the same way.
+
+        Registered as update_website_context so one function answers for the
+        desk and for every website page, rather than a static hooks value that
+        could neither yield to the site nor fall back if the file is missing.
+        """
+        from swift_theme.api.boot import FALLBACK_LOGO, SHIPPED_LOGO, _shipped_logo_exists, brand_favicon
+
+        self.assertEqual(
+            frappe.get_hooks("update_website_context", app_name=APP),
+            ["swift_theme.api.boot.brand_favicon"],
+            "the favicon resolver is not registered, so the tab keeps Frappe's icon")
+        self.assertFalse(
+            (frappe.get_hooks("website_context", app_name=APP) or {}).get("favicon"),
+            "a static favicon is still pinned in hooks and would win over the resolver")
+
+        with patch_single("Website Settings", favicon=""), settings_patched(brand_favicon=""):
+            self.assertEqual(
+                brand_favicon().get("favicon"),
+                SHIPPED_LOGO if _shipped_logo_exists() else FALLBACK_LOGO)
+
+        with patch_single("Website Settings", favicon="/files/theirs.png"):
+            self.assertIsNone(
+                brand_favicon().get("favicon"),
+                "the theme paints over a favicon the site chose for itself")
 
     def test_only_the_themes_own_artwork_is_enlarged(self):
         """Scoped by the file's path, not by the slot.
@@ -1657,8 +1735,9 @@ class TestSwiftThemeBackdrops(IntegrationTestCase):
         Switch Theme dialog and the command palette did not, so turning the
         switcher off left two ways to change the theme still standing.
         """
+        # The navbar chip was removed (Ali, 2026-08-28) and its file with it;
+        # theming is offered through Frappe's own dialog now.
         surfaces = {
-            "swift-switcher.js": "the navbar chip",
             "swift-theme-dialog.js": "the Switch Theme dialog",
             "swift-palette.js": "the command palette",
         }
@@ -2319,12 +2398,20 @@ class TestSwiftThemeStyling(IntegrationTestCase):
         a shadow thrown sideways, which reads as a seam once the panel has
         rounded corners and is no longer touching the content.
         """
+        # The base rule, not the gradient variant: that one
+        # (`[data-swift-sidebar-gradient="on"][data-swift-sidebar-fill="brand"]`)
+        # only sets the two fill stops and matches the same tail, so taking the
+        # first hit picked it up and this read the wrong block entirely.
         block = None
         for selector, declarations in css_rules("swift-sidebar.css"):
-            if '[data-swift-sidebar-fill="brand"]' in selector \
-                    and selector.rstrip().endswith(".body-sidebar"):
-                block = declarations
-                break
+            if '[data-swift-sidebar-fill="brand"]' not in selector:
+                continue
+            if not selector.rstrip().endswith(".body-sidebar"):
+                continue
+            if "sidebar-gradient" in selector:
+                continue
+            block = declarations
+            break
         self.assertIsNotNone(block, "the brand sidebar rule is gone")
 
         # Conditional on purpose: with no margin there is nothing to
@@ -3137,13 +3224,21 @@ class TestSwiftThemeStyling(IntegrationTestCase):
         js = read_js("swift-boot.js")
         self.assertIn('frappe.realtime.on("swift_theme_updated"', js)
 
-    def test_switcher_reacts_to_live_preference_changes(self):
-        self.assertIn("swift:prefs:applied", read_js("swift-boot.js"))
-        self.assertIn("swift:prefs:applied", read_js("swift-switcher.js"))
+    def test_applying_prefs_announces_itself(self):
+        """`swift:prefs:applied` carries the new prefs to anything listening.
+
+        Nothing in the app listens today - the navbar chip did, and went with
+        it. The event is kept because it ships in installed bundles and a site
+        may have hooked it; the assertion is only that it still fires with the
+        prefs attached.
+        """
+        js = read_js("swift-boot.js")
+        self.assertIn('new CustomEvent("swift:prefs:applied"', js)
+        self.assertIn("detail: boot", js, "the event fires with nothing attached")
 
     def test_feature_flags_are_honoured_by_their_modules(self):
         for filename, flag in (
-            ("swift-switcher.js", "enable_switcher"),
+            ("swift-theme-dialog.js", "enable_switcher"),
             ("swift-focus.js", "enable_focus_mode"),
             ("swift-palette.js", "enable_command_palette"),
         ):
@@ -3193,7 +3288,7 @@ class TestSwiftThemeStyling(IntegrationTestCase):
         self.assertIn("removeAttr", js)
 
     def test_switcher_ui_is_gated_on_the_role_flag(self):
-        for filename in ("swift-theme-dialog.js", "swift-switcher.js", "swift-palette.js"):
+        for filename in ("swift-theme-dialog.js", "swift-palette.js"):
             self.assertIn(
                 "can_switch_theme", read_js(filename), f"{filename} does not check the role"
             )

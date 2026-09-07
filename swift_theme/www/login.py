@@ -4,10 +4,6 @@ from frappe.utils import now_datetime
 from frappe.www.login import get_context as frappe_login_context
 from frappe.www.login import sanitize_redirect
 
-from swift_theme.swift_theme.doctype.swift_theme_settings.swift_theme_settings import (
-    get_active_theme_config,
-)
-
 no_cache = True
 
 
@@ -50,16 +46,16 @@ def get_context(context):
     except AttributeError:
         context["csrf_token"] = ""
 
-    # Rendered server-side so the themed page paints correctly on first load
-    # instead of flashing default colours while an API call resolves.
-    theme = get_active_theme_config()
-    colors = theme.get("colors") or {}
-    context["theme"] = theme
-    context["colors"] = colors
-    context["is_dark_mode"] = bool(theme.get("is_dark_mode"))
-    context["custom_login_text"] = theme.get("custom_login_text") or _(
-        "Secure login powered by Swift Theme Enterprise"
-    )
+    # `theme` is Frappe's own key for the Website Theme, and
+    # templates/includes/head.html renders `{{ theme.theme_url }}` from it.
+    # This used to overwrite it with the Swift colour config, which has no
+    # theme_url - so Jinja wrote its own "no such element" text into the href
+    # and every login page load fetched that as a URL and got a 404.
+    #
+    # The four keys it set - theme, colors, is_dark_mode, custom_login_text -
+    # were read by nothing: the palette reaches this page as
+    # `theme_variables` below, rendered inline. So they are gone rather than
+    # renamed.
 
     settings = frappe.get_cached_doc("Swift Theme Settings")
     context["brand_name"] = settings.brand_name or frappe.get_website_settings("app_name") or ""
