@@ -7,7 +7,7 @@ page — from one palette, and stays out of Frappe's way while doing it.
 📖 **[Documentation](https://github.com/its-alikhokher/swift_theme/wiki)** —
 installation, every setting explained, and troubleshooting.
 
-![The desk home page on Aurora](images/01-home-aurora.png)
+![The desk home page on Aurora](images/01-home-page-aurora.png)
 
 ## Themes
 
@@ -93,36 +93,36 @@ there is nothing extra to download.
 The same landing on **Eclipse** — figures across the top over a ridge line, and
 the apps on a panel of their own:
 
-![The desk home page on Eclipse](images/02-home-eclipse.png)
+![The desk home page on Eclipse](images/02-home-page-eclipse.png)
 
 **Honeycomb** is a different design, not a recolour: a headline beside a comb of
 hexagonal tiles.
 
-![The desk home page on Honeycomb](images/03-home-honeycomb.png)
+![The desk home page on Honeycomb](images/03-home-page-honeycomb.png)
 
 **Dune**, with the sand ridges and the plant in the corner:
 
-![The desk home page on Dune](images/04-home-dune.png)
+![The desk home page on Dune](images/04-home-page-dune.png)
 
 Notifications are Frappe's own panel, opened by Frappe's own button and simply
 placed under the bell — the same tabs, counts and actions as everywhere else:
 
-![Notifications on the home page](images/05-home-notifications.png)
+![Notifications on the home page](images/05-notifications-panel.png)
 
 All twelve colour presets sit inside Frappe's own Switch Theme dialog, drawn as
 the same preview cards as Light / Dark / Automatic:
 
-![The Switch Theme dialog](images/06-switch-theme-dialog.png)
+![The Switch Theme dialog](images/06-theme-switcher.png)
 
 Every other page is the desk you know, themed — sidebar, filters, list chrome
 and empty states included:
 
-![A list view](images/07-desk-list.png)
+![A list view](images/07-list-view.png)
 
 The landing is configured from one section: which design, what it shows, and
 which Number Cards become its figures.
 
-![Home page settings](images/08-settings-home-page.png)
+![Home page settings](images/08-home-page-settings.png)
 
 ## Requirements
 
