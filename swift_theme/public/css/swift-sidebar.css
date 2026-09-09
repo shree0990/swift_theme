@@ -318,8 +318,26 @@ html[data-swift-sidebar-fill="brand"] .body-sidebar .sidebar-item-icon svg [fill
    it - without it the user's email stayed Frappe's #7c7c7c grey on the panel,
    which measured 1.9:1 against the card behind it. */
 html[data-swift-sidebar-fill="brand"] .body-sidebar .avatar-name-email .text-secondary,
-html[data-swift-sidebar-fill="brand"] .body-sidebar .text-secondary,
-html[data-swift-sidebar-fill="brand"] .body-sidebar .section-item .sidebar-item-label {
+html[data-swift-sidebar-fill="brand"] .body-sidebar .text-secondary {
+  color: color-mix(in oklab, var(--swift-sidebar-fg, var(--swift-accent-fg)) 72%, transparent) !important;
+}
+
+/* A group heading sits back the same way — but it has to be matched on the
+   heading's own anchor, not on `.section-item`.
+
+   `.section-item` is on the *container*, and Frappe nests that group's children
+   inside it (`.section-item > .nested-container > .sidebar-item-container`). So
+   a descendant match on `.sidebar-item-label` dimmed every child row too, and
+   an expandable group like "Maintenance" — a Section Break with indent, which
+   Frappe renders as an ordinary navigable row — along with them.
+
+   Worse, this rule carries `!important`, so it also beat the active-row colour:
+   a selected child kept 72%-white text on the white active pill and vanished.
+
+   `.item-anchor.section-break` is only rendered for a true, non-indented
+   heading (see frappe/public/js/frappe/ui/sidebar/sidebar_item.html), which is
+   exactly the one row that should sit back. */
+html[data-swift-sidebar-fill="brand"] .body-sidebar .section-item .item-anchor.section-break .sidebar-item-label {
   color: color-mix(in oklab, var(--swift-sidebar-fg, var(--swift-accent-fg)) 72%, transparent) !important;
 }
 
@@ -451,7 +469,11 @@ html[data-swift-themed] .sidebar-user-button .avatar::after {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--swift-success, #22c55e);
+  /* Frappe's own green, not the brand hue: this dot means "online", and a
+     theme with a red or amber primary would turn presence into what reads as
+     an error. --swift-success was never defined anywhere, so the literal
+     behind it was what always painted. */
+  background: var(--green-600, var(--green-500));
   box-shadow: 0 0 0 2px var(--swift-sidebar-fill-end, var(--fg-color));
   pointer-events: none;
 }

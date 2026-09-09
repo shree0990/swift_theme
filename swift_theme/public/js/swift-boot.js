@@ -562,10 +562,11 @@
                 applyAutoDark(boot.auto_dark_start, boot.auto_dark_end);
             }
 
-            // Custom favicon
-            if (boot.brand_favicon) {
+            // The tab icon, already resolved server-side - blank when the site
+            // set its own favicon, which the desk must not paint over.
+            if (boot.favicon) {
                 var link = document.querySelector("link[rel~='icon']") || document.createElement("link");
-                link.rel = "icon"; link.href = boot.brand_favicon;
+                link.rel = "icon"; link.href = boot.favicon;
                 document.head.appendChild(link);
             }
 

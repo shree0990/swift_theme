@@ -43,9 +43,11 @@ doctype_js = {"User": "public/js/user_form.js"}
 extend_bootinfo = "swift_theme.api.boot.extend_bootinfo"
 
 # ---- Website context (login/portal) ----
-website_context = {
-    "favicon": "/assets/swift_theme/icons/favicon.svg",
-}
+# The favicon is decided in code rather than pinned here: it follows the same
+# rule as the app logo - a site that set its own is left alone - and it has to
+# fall back if the brand mark is not on disk. A static value here could do
+# neither, and would ship a 404 the day the file is missing.
+update_website_context = "swift_theme.api.boot.brand_favicon"
 
 # ---- Print theming ----
 # Prints load /assets/swift_theme/css/swift-print.css via a Custom HTML block

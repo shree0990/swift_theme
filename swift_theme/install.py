@@ -55,6 +55,10 @@ SETTINGS_DEFAULTS = {
     "navbar_variant": "Solid",
     "sidebar_variant": "Floating",
     "sidebar_brand_fill": 0,
+    # The landing is off by default, but its design has to be seeded anyway:
+    # the field is added by a migrate with no stored value, so an existing site
+    # that turns the landing on would open the form to an empty Home Preset.
+    "home_preset": "Aurora",
     "enable_switcher": 1,
     "enable_command_palette": 1,
     "enable_focus_mode": 1,

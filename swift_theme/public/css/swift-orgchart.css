@@ -165,15 +165,50 @@ html[data-swift-themed] .mobile-node .node-card {
 
 html[data-swift-themed] .hierarchy {
   flex-direction: column !important;
-  align-items: center;
+  /* NOT `align-items: center`. The levels are wider than the viewport on any
+     real organisation, and centring a flex item that overflows spills it both
+     ways — but `scrollLeft` cannot go below 0, so everything to the left of the
+     origin becomes unreachable. On a 446-employee chart that hid 1891px of the
+     top level: you could scroll right, never left.
+
+     `stretch` instead, with the track sized to its content below, so every
+     level is as wide as the widest one and the centring happens *inside* the
+     scrollable width rather than around it. */
+  align-items: stretch;
   gap: 52px;                 /* room for the connector to turn */
   padding: 24px 0 40px;
+}
+
+/* HR pins the chart box to a flat `max-height: 700px` inline, from
+   hierarchy_chart_desktop.js:setup_page_style(). That is a reasonable floor on
+   a laptop and a waste on anything taller — the panel stopped at 700px while
+   400-odd pixels of screen sat empty under it. Tie it to the viewport instead,
+   less the 49px the desk header takes plus room to breathe.
+
+   `!important` is not decoration here: the 700px is an inline style, and only
+   `!important` outranks one. */
+html[data-swift-themed] .layout-main-section:has(#hierarchy-chart-wrapper) {
+  max-height: calc(100vh - 96px) !important;
+  min-height: 420px !important;
+}
+
+/* The scroll track. `max-content` lets it grow to the widest level so the
+   overflow is real, scrollable width; `min-width: 100%` keeps a small chart
+   filling the page instead of huddling at the left. Both are needed — either
+   one alone reintroduces the clipping or breaks centring. */
+html[data-swift-themed] #hierarchy-chart-wrapper,
+html[data-swift-themed] #hierarchy-chart,
+html[data-swift-themed] .hierarchy {
+  width: max-content;
+  min-width: 100%;
 }
 
 html[data-swift-themed] .hierarchy > .level {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  /* Safe now: the level is as wide as the track, so this centres within the
+     scrollable area rather than overflowing past its left edge. */
   justify-content: center;
   gap: 40px;
   margin: 0;

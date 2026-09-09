@@ -1,0 +1,25 @@
+{
+ "app": "swift_theme",
+ "bg_color": "gray",
+ "creation": "2026-09-08 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "App",
+ "idx": 20,
+ "label": "Swift Theme",
+ "link": "/desk/swift-theme-settings",
+ "link_type": "External",
+ "logo_url": "/assets/swift_theme/icons/quantex-beast-icon.png",
+ "modified": "2026-09-08 01:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "Swift Theme",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ],
+ "standard": 1
+}

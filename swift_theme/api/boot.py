@@ -1,4 +1,3 @@
-import functools
 import os
 
 import frappe
@@ -58,7 +57,7 @@ def boot_session(bootinfo):
     bootinfo.swift_theme = get_effective_prefs()
 
 
-SHIPPED_LOGO = "/assets/swift_theme/icons/quantex-beast.svg"
+SHIPPED_LOGO = "/assets/swift_theme/icons/quantex-beast.png"
 FALLBACK_LOGO = "/assets/swift_theme/icons/favicon.svg"
 
 
@@ -95,14 +94,47 @@ def _brand_mark():
     return SHIPPED_LOGO if _shipped_logo_exists() else FALLBACK_LOGO
 
 
-@functools.lru_cache(maxsize=1)
+def brand_favicon(context=None):
+    """The tab icon and the splash mark, by the same rule as the app logo.
+
+    Registered as `update_website_context`, so it runs for the desk and for
+    every website page alike. Both follow the same order the logo does: a site
+    that has chosen its own is left alone entirely, then Swift Theme Settings,
+    then the theme's own mark.
+
+    The splash is the first thing a desk paints - before any script runs, so
+    nothing on the client can reach it - and it was still Frappe's logo while
+    everything behind it had been rebranded.
+    """
+    if context is None:
+        context = frappe._dict()
+
+    s = _settings()
+    fallback = SHIPPED_LOGO if _shipped_logo_exists() else FALLBACK_LOGO
+
+    if not frappe.get_website_settings("favicon"):
+        context["favicon"] = s.get("brand_favicon") or fallback
+
+    if not frappe.get_website_settings("splash_image"):
+        # The logo reads better here than the favicon: the splash draws it at
+        # up to 200px wide, where a tab-sized mark would look starved. Brand
+        # Logo if the site set one, otherwise the theme's mark.
+        context["splash_image"] = s.get("brand_logo") or fallback
+
+    return context
+
+
 def _shipped_logo_exists():
     """Whether the brand mark is actually on disk.
 
     Checked rather than assumed: pointing the desk at a file that is not there
     replaces every app icon with a broken image, which is worse than the
-    per-app logos it was meant to fix. Cached - the answer only changes when
-    the app is redeployed, and this runs on every boot.
+    per-app logos it was meant to fix.
+
+    Not cached. It was, on the reasoning that the answer only changes when the
+    app is redeployed - but an lru_cache lives as long as the worker process,
+    so dropping the file in and clearing the cache changed nothing and the mark
+    stayed missing until a restart. One stat() per boot is not worth that.
     """
     return os.path.exists(
         os.path.join(frappe.get_app_path("swift_theme"), "public", "icons", os.path.basename(SHIPPED_LOGO))
@@ -277,6 +309,10 @@ def get_effective_prefs():
         "brand_logo":      s.get("brand_logo") or "",
         "brand_logo_dark": s.get("brand_logo_dark") or "",
         "brand_favicon":   s.get("brand_favicon") or "",
+        # The tab icon already decided: the raw setting above is what the form
+        # holds, this is what the desk should actually paint. Empty means the
+        # site chose its own favicon and nothing here should touch it.
+        "favicon":         brand_favicon().get("favicon") or "",
 
         # login
         "login_layout":      s.get("login_layout") or "Split",
@@ -351,7 +387,10 @@ def set_user_pref(field, value):
 
     user = frappe.session.user
     if not user or user == "Guest":
-        frappe.throw(frappe._("Login required"))
+        # PermissionError, matching apply_theme: the two endpoints write the
+        # same fields and a caller should not have to tell which one refused
+        # them by the exception type.
+        frappe.throw(frappe._("Login required"), frappe.PermissionError)
 
     # Hiding the switcher is not enough on its own — the endpoint is reachable
     # directly, so the same restriction is enforced here.
